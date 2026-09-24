@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Suhu dan Kalor</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- KaTeX CDN for Math Equation Formatting -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+    <!-- Three.js and OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        },
+                        fire: {
+                            400: '#f97316',
+                            500: '#ef4444',
+                            600: '#dc2626'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Styles for AR Viewport & Overlay */
+        body {
+            user-select: none;
+            -webkit-user-select: none;
+            overflow-x: hidden;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+        #ar-canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+            background: #090d16;
+        }
+        #webcam-feed {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+            display: none;
+        }
+        #three-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            touch-action: none;
+        }
+        .ui-glass {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+        .ui-glass-light {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.1);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(59, 130, 246, 0.5);
+            border-radius: 3px;
+        }
+        @keyframes pulse-flame {
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.1); }
+        }
+        .flame-active {
+            animation: pulse-flame 0.8s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 flex flex-col min-h-screen">
+
+    <!-- App Navigation Header -->
+    <header class="fixed top-0 left-0 right-0 z-50 ui-glass border-b border-slate-700/50 px-4 py-2.5">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-rose-500/20">
+                    <i class="fa-solid font-bold fa-fire-burner text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-base md:text-lg leading-tight bg-gradient-to-r from-amber-200 via-rose-200 to-indigo-200 bg-clip-text text-transparent">
+                        Suhu dan Kalor
+                    </h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">Laboratorium AR Markerless Interaktif & LKPD Digital</p>
+                </div>
+            </div>
+
+            <!-- Tab Navigation Buttons -->
+            <nav class="flex items-center space-x-1 sm:space-x-2 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
+                <button onclick="switchTab('ar')" id="tab-ar" class="px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition-all bg-brand-600 text-white shadow">
+                    <i class="fa-solid fa-cube mr-1.5"></i>Simulasi AR
+                </button>
+                <button onclick="switchTab('tujuan')" id="tab-tujuan" class="px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition-all text-slate-300 hover:text-white hover:bg-slate-700/50">
+                    <i class="fa-solid fa-bullseye mr-1.5"></i>Tujuan
+                </button>
+                <button onclick="switchTab('petunjuk')" id="tab-petunjuk" class="px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition-all text-slate-300 hover:text-white hover:bg-slate-700/50">
+                    <i class="fa-solid fa-book-open mr-1.5"></i>Petunjuk
+                </button>
+                <button onclick="switchTab('tabel')" id="tab-tabel" class="px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition-all text-slate-300 hover:text-white hover:bg-slate-700/50">
+                    <i class="fa-solid fa-table-list mr-1.5"></i>Pengamatan
+                </button>
+                <button onclick="switchTab('lkpd')" id="tab-lkpd" class="px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition-all text-slate-300 hover:text-white hover:bg-slate-700/50">
+                    <i class="fa-solid fa-file-pen mr-1.5"></i>LKPD
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 pt-14 relative overflow-hidden flex flex-col">
+        
+        <!-- ================= SECTION 1: SIMULASI AR ================= -->
+        <section id="sec-ar" class="relative w-full h-[calc(100vh-3.5rem)] flex-1 overflow-hidden">
+            <!-- Canvas Container -->
+            <div id="ar-canvas-container">
+                <!-- Camera Feed for Markerless WebAR -->
+                <video id="webcam-feed" autoplay playsinline muted></video>
+                <!-- Three.js Canvas -->
+                <canvas id="three-canvas"></canvas>
+
+                <!-- Floating HUD Stats -->
+                <div class="absolute top-4 left-4 z-30 flex flex-col space-y-2 pointer-events-none">
+                    <div class="ui-glass px-4 py-3 rounded-2xl border border-slate-700/80 shadow-2xl min-w-[200px] pointer-events-auto">
+                        <div class="flex items-center justify-between text-xs text-slate-400 mb-1">
+                            <span><i class="fa-solid fa-temperature-half text-rose-400 mr-1"></i> Suhu Benda</span>
+                            <span id="hud-status" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Stabil</span>
+                        </div>
+                        <div class="flex items-baseline space-x-1">
+                            <span id="hud-temp" class="text-3xl font-extrabold text-white tracking-tight">25.0</span>
+                            <span class="text-lg font-bold text-rose-400">°C</span>
+                            <span id="hud-temp-k" class="text-xs text-slate-400 ml-2">(298.15 K)</span>
+                        </div>
+                        
+                        <!-- Thermal Bar Gauge -->
+                        <div class="w-full bg-slate-800 h-2 rounded-full mt-2 overflow-hidden border border-slate-700">
+                            <div id="temp-gauge-bar" class="h-full bg-gradient-to-r from-blue-500 via-amber-400 to-rose-600 transition-all duration-300" style="width: 25%;"></div>
+                        </div>
+
+                        <div class="mt-3 pt-2 border-t border-slate-700/50 grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <span class="text-slate-400 block text-[10px]">Kalor Diserap (Q):</span>
+                                <span id="hud-energy" class="font-bold text-amber-300">0.00 kJ</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block text-[10px]">Waktu Pemasan:</span>
+                                <span id="hud-timer" class="font-bold text-indigo-300">00:00.0 s</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Right AR Toggle Bar -->
+                <div class="absolute top-4 right-4 z-30 flex items-center space-x-2">
+                    <button id="btn-toggle-ar" onclick="toggleWebCamAR()" class="ui-glass px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:text-white hover:bg-slate-700/60 transition flex items-center space-x-2 border border-slate-600/80 shadow-lg">
+                        <i id="ar-cam-icon" class="fa-solid fa-camera text-slate-400"></i>
+                        <span id="ar-cam-text">Aktifkan Kamera AR</span>
+                    </button>
+                    <button onclick="resetCameraView()" class="ui-glass p-2.5 rounded-xl text-slate-300 hover:text-white transition border border-slate-600/80 shadow-lg" title="Reset Pandangan 3D">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                    <button onclick="toggleAtomicModal()" class="ui-glass p-2.5 rounded-xl text-amber-400 hover:text-amber-300 transition border border-slate-600/80 shadow-lg" title="Lihat Mikroskopis Molekul">
+                        <i class="fa-solid fa-atom"></i>
+                    </button>
+                </div>
+
+                <!-- Bottom Interactive Controls Drawer -->
+                <div class="absolute bottom-4 left-4 right-4 z-30 max-w-4xl mx-auto">
+                    <div class="ui-glass p-4 rounded-3xl border border-slate-700/80 shadow-2xl space-y-4">
+                        
+                        <!-- Control Grid -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            
+                            <!-- Material Selector -->
+                            <div class="bg-slate-800/80 p-3 rounded-2xl border border-slate-700/60">
+                                <label class="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                                    <span><i class="fa-solid fa-cubes text-amber-400 mr-1.5"></i>Jenis Bahan</span>
+                                    <span id="material-c-val" class="text-[10px] text-amber-300 font-mono">c = 4184 J/kg°C</span>
+                                </label>
+                                <select id="select-material" onchange="updateMaterialSelection()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium">
+                                    <option value="water">Air (Komponen Cair)</option>
+                                    <option value="aluminum">Aluminium (Logam Ringan)</option>
+                                    <option value="copper">Tembaga (Konduktor Baik)</option>
+                                    <option value="iron">Besi (Logam Padat)</option>
+                                    <option value="gold">Emas (Massa Jenis Tinggi)</option>
+                                    <option value="lead">Timbal (Kalor Jenis Rendah)</option>
+                                </select>
+                            </div>
+
+                            <!-- Mass Selector & Size Slider -->
+                            <div class="bg-slate-800/80 p-3 rounded-2xl border border-slate-700/60">
+                                <div class="flex items-center justify-between text-xs font-semibold text-slate-300 mb-1">
+                                    <span><i class="fa-solid fa-weight-hanging text-indigo-400 mr-1.5"></i>Massa (m)</span>
+                                    <span id="mass-display" class="text-indigo-300 font-bold">0.50 kg</span>
+                                </div>
+                                <input id="slider-mass" type="range" min="0.1" max="2.0" step="0.05" value="0.5" oninput="updateMassValue(this.value)" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-brand-500">
+                                <div class="flex justify-between text-[10px] text-slate-400 mt-1">
+                                    <span>0.1 kg</span>
+                                    <span>1.0 kg</span>
+                                    <span>2.0 kg</span>
+                                </div>
+                            </div>
+
+                            <!-- Heat Power / Bunsen Burner Control -->
+                            <div class="bg-slate-800/80 p-3 rounded-2xl border border-slate-700/60">
+                                <div class="flex items-center justify-between text-xs font-semibold text-slate-300 mb-1">
+                                    <span><i class="fa-solid fa-fire text-rose-500 mr-1.5"></i>Daya Api (P)</span>
+                                    <span id="power-display" class="text-rose-400 font-bold">500 Watt</span>
+                                </div>
+                                <input id="slider-power" type="range" min="0" max="2000" step="100" value="500" oninput="updatePowerValue(this.value)" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-rose-500">
+                                <div class="flex justify-between text-[10px] text-slate-400 mt-1">
+                                    <span>Mati (0W)</span>
+                                    <span>Sedang</span>
+                                    <span>Maks (2kW)</span>
+                                </div>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="flex flex-col justify-between space-y-2">
+                                <button id="btn-start-sim" onclick="toggleSimulation()" class="w-full py-2 px-4 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/30 transition transform active:scale-95">
+                                    <i id="btn-start-icon" class="fa-solid fa-play"></i>
+                                    <span id="btn-start-text">Mulai Pemanasan</span>
+                                </button>
+                                
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button onclick="logDataPoint()" class="py-1.5 px-2 bg-brand-600/80 hover:bg-brand-600 text-white rounded-lg text-xs font-semibold transition flex items-center justify-center space-x-1">
+                                        <i class="fa-solid fa-plus text-[10px]"></i>
+                                        <span>Catat Data</span>
+                                    </button>
+                                    <button onclick="resetSimulation()" class="py-1.5 px-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-xs font-semibold transition flex items-center justify-center space-x-1">
+                                        <i class="fa-solid fa-rotate-left text-[10px]"></i>
+                                        <span>Reset</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Atomic Vibration Modal Inlay Overlay -->
+                <div id="modal-atomic" class="hidden absolute inset-0 z-40 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+                    <div class="bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative">
+                        <button onclick="toggleAtomicModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                        <div class="flex items-center space-x-3 mb-4">
+                            <div class="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                <i class="fa-solid fa-atom text-xl"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-white text-base">Visualisasi Mikroskopis Molekul</h3>
+                                <p class="text-xs text-slate-400">Getaran Termal Partikel Zat Saat Dipanaskan</p>
+                            </div>
+                        </div>
+
+                        <!-- Canvas for Atomic Particles -->
+                        <div class="relative w-full h-56 bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center">
+                            <canvas id="atomic-canvas" class="w-full h-full"></canvas>
+                        </div>
+
+                        <div class="mt-4 text-xs text-slate-300 space-y-2 bg-slate-800/60 p-3 rounded-xl border border-slate-700/50">
+                            <p><strong class="text-amber-300">Konsep Fisika:</strong> Ketika kalor ditransfer ke benda, energi kinetik rata-rata partikel/molekul meningkat. Benda dengan suhu lebih tinggi memiliki getaran kisi/molekul yang jauh lebih cepat.</p>
+                            <div class="flex items-center justify-between text-[11px] pt-1 text-slate-400 border-t border-slate-700">
+                                <span>Kecepatan Kinetik Terhitung: <strong id="atomic-speed-display" class="text-emerald-400">Normal</strong></span>
+                                <span>Energi $E_k \propto T$</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ================= SECTION 2: TUJUAN PEMBELAJARAN ================= -->
+        <section id="sec-tujuan" class="hidden p-4 sm:p-8 max-w-5xl mx-auto w-full flex-1 overflow-y-auto">
+            <div class="space-y-6">
+                <!-- Header Card -->
+                <div class="bg-gradient-to-r from-brand-900/60 via-indigo-900/40 to-slate-900 p-6 rounded-3xl border border-brand-500/30 shadow-xl">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-14 h-14 rounded-2xl bg-brand-600/30 border border-brand-400/40 flex items-center justify-center text-brand-300 text-2xl shadow-inner">
+                            <i class="fa-solid fa-bullseye"></i>
+                        </div>
+                        <div>
+                            <span class="text-xs font-bold uppercase tracking-wider text-brand-400">Modul Pembelajaran Fisika</span>
+                            <h2 class="text-xl sm:text-2xl font-black text-white">Tujuan Pembelajaran & Capaian Kalor</h2>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grid Objectives -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-slate-800/70 p-5 rounded-2xl border border-slate-700 hover:border-brand-500/50 transition">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm mb-3">1</div>
+                        <h3 class="font-bold text-white text-base mb-2">Memahami Persamaan Dasar Kalor</h3>
+                        <p class="text-xs text-slate-300 leading-relaxed">
+                            Peserta didik dapat menganalisis hubungan antara besarnya kalor ($Q$), massa benda ($m$), kalor jenis ($c$), dan perubahan suhu ($\Delta T$) melalui persamaan $Q = m \cdot c \cdot \Delta T$.
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-800/70 p-5 rounded-2xl border border-slate-700 hover:border-brand-500/50 transition">
+                        <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-sm mb-3">2</div>
+                        <h3 class="font-bold text-white text-base mb-2">Pengaruh Kalor Jenis Bahan</h3>
+                        <p class="text-xs text-slate-300 leading-relaxed">
+                            Membandingkan laju kenaikan suhu pada berbagai bahan (Air, Aluminium, Tembaga, Besi, Emas, Timbal) dengan massa dan daya pemanas yang sama.
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-800/70 p-5 rounded-2xl border border-slate-700 hover:border-brand-500/50 transition">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-sm mb-3">3</div>
+                        <h3 class="font-bold text-white text-base mb-2">Visualisasi Mikroskopis</h3>
+                        <p class="text-xs text-slate-300 leading-relaxed">
+                            Mengamati perubahan getaran termal atom/molekul secara mikroskopis seiring meningkatnya energi kalor dan suhu benda.
+                        </p>
+                    </div>
+
+                    <div class="bg-slate-800/70 p-5 rounded-2xl border border-slate-700 hover:border-brand-500/50 transition">
+                        <div class="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-sm mb-3">4</div>
+                        <h3 class="font-bold text-white text-base mb-2">Analisis Grafik & Data LKPD</h3>
+                        <p class="text-xs text-slate-300 leading-relaxed">
+                            Mengumpulkan data pengamatan eksperimen virtual, mencatat hasil dalam tabel, dan merumuskan kesimpulan secara ilmiah pada LKPD digital.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Reference Constants Table -->
+                <div class="bg-slate-800/60 p-5 rounded-2xl border border-slate-700">
+                    <h3 class="font-bold text-white text-sm mb-3 flex items-center">
+                        <i class="fa-solid fa-bookmark text-amber-400 mr-2"></i>Tabel Nilai Kalor Jenis Bahan Standar ($c$)
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs text-slate-300 border-collapse">
+                            <thead>
+                                <tr class="bg-slate-900/80 text-slate-400 border-b border-slate-700">
+                                    <th class="p-2.5">Nama Bahan</th>
+                                    <th class="p-2.5">Kalor Jenis $c$ ($\text{J/kg}^\circ\text{C}$)</th>
+                                    <th class="p-2.5">Sifat Konduksi</th>
+                                    <th class="p-2.5">Karakteristik Thermal</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-700/60">
+                                <tr>
+                                    <td class="p-2.5 font-semibold text-blue-300">Air</td>
+                                    <td class="p-2.5 font-mono">4184</td>
+                                    <td class="p-2.5"><span class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px]">Sangat Lambat Panas</span></td>
+                                    <td class="p-2.5 text-slate-400">Penyimpan panas alami yang tinggi</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-semibold text-slate-200">Aluminium</td>
+                                    <td class="p-2.5 font-mono">900</td>
+                                    <td class="p-2.5"><span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px]">Sedang</span></td>
+                                    <td class="p-2.5 text-slate-400">Ringan, penghantar panas sedang</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-semibold text-slate-300">Besi</td>
+                                    <td class="p-2.5 font-mono">450</td>
+                                    <td class="p-2.5"><span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px]">Cepat</span></td>
+                                    <td class="p-2.5 text-slate-400">Logam struktural umum</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-semibold text-amber-400">Tembaga</td>
+                                    <td class="p-2.5 font-mono">385</td>
+                                    <td class="p-2.5"><span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px]">Sangat Cepat</span></td>
+                                    <td class="p-2.5 text-slate-400">Konduktor thermal & listrik sangat unggul</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-semibold text-amber-300">Emas</td>
+                                    <td class="p-2.5 font-mono">129</td>
+                                    <td class="p-2.5"><span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px]">Sangat Cepat Sekali</span></td>
+                                    <td class="p-2.5 text-slate-400">Massa jenis tinggi, perubahan suhu drastis</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-semibold text-slate-400">Timbal</td>
+                                    <td class="p-2.5 font-mono">128</td>
+                                    <td class="p-2.5"><span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px]">Sangat Cepat Sekali</span></td>
+                                    <td class="p-2.5 text-slate-400">Sensitif terhadap kenaikan kalor kecil</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= SECTION 3: PETUNJUK PENGGUNAAN ================= -->
+        <section id="sec-petunjuk" class="hidden p-4 sm:p-8 max-w-5xl mx-auto w-full flex-1 overflow-y-auto">
+            <div class="space-y-6">
+                <div class="bg-slate-800/80 p-6 rounded-3xl border border-slate-700 shadow-xl">
+                    <h2 class="text-xl font-bold text-white mb-2 flex items-center">
+                        <i class="fa-solid fa-circle-info text-brand-400 mr-2.5"></i>Petunjuk Pengoperasian Laboratorium AR
+                    </h2>
+                    <p class="text-xs text-slate-300">Ikuti langkah-langkah di bawah ini untuk memulai pengamatan interaktif WebAR Kalor.</p>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- Step 1 -->
+                    <div class="bg-slate-800/60 p-5 rounded-2xl border border-slate-700/80 flex items-start space-x-4">
+                        <div class="w-10 h-10 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center font-bold text-base shrink-0">1</div>
+                        <div>
+                            <h4 class="font-bold text-white text-sm mb-1">Pengaturan Mode AR Markerless</h4>
+                            <p class="text-xs text-slate-300 leading-relaxed">
+                                Klik tombol <strong>"Aktifkan Kamera AR"</strong> di pojok kanan atas untuk memproyeksikan peralatan laboratorium ke lingkungan sekitar Anda melalui kamera perangkat. Anda juga dapat menggunakan tampilan Virtual Studio 3D tanpa kamera.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div class="bg-slate-800/60 p-5 rounded-2xl border border-slate-700/80 flex items-start space-x-4">
+                        <div class="w-10 h-10 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-base shrink-0">2</div>
+                        <div>
+                            <h4 class="font-bold text-white text-sm mb-1">Navigasi Interaksi 3D</h4>
+                            <p class="text-xs text-slate-300 leading-relaxed">
+                                Putar sudut pandang dengan me-drag area canvas (sentuh / klik kiri), gunakan pinch atau scroll untuk Zoom in/out, serta geser objek menggunakan dua jari.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div class="bg-slate-800/60 p-5 rounded-2xl border border-slate-700/80 flex items-start space-x-4">
+                        <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-base shrink-0">3</div>
+                        <div>
+                            <h4 class="font-bold text-white text-sm mb-1">Memilih Material & Massa</h4>
+                            <p class="text-xs text-slate-300 leading-relaxed">
+                                Gunakan menu kontrol bawah untuk memilih jenis bahan (Air, Aluminium, Tembaga, Besi, Emas, Timbal) serta menggeser slider massa dari 0.1 kg hingga 2.0 kg.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Step 4 -->
+                    <div class="bg-slate-800/60 p-5 rounded-2xl border border-slate-700/80 flex items-start space-x-4">
+                        <div class="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-base shrink-0">4</div>
+                        <div>
+                            <h4 class="font-bold text-white text-sm mb-1">Memulai Pemanasan & Pencatatan</h4>
+                            <p class="text-xs text-slate-300 leading-relaxed">
+                                Atur Daya Api Spirtus/Bunsen lalu tekan <strong>"Mulai Pemanasan"</strong>. Amati kenaikan termometer secara real-time dan klik <strong>"Catat Data"</strong> untuk menyimpan hasil pengamatan ke Tabel pengamatan.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= SECTION 4: TABEL PENGAMATAN ================= -->
+        <section id="sec-tabel" class="hidden p-4 sm:p-8 max-w-6xl mx-auto w-full flex-1 overflow-y-auto">
+            <div class="space-y-6">
+                
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-800/80 p-5 rounded-3xl border border-slate-700 shadow-xl">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center">
+                            <i class="fa-solid fa-table text-emerald-400 mr-2.5"></i>Tabel Pengamatan Hasil Simulasi
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Catatan log eksperimen otomatis berdasarkan simulasi AR</p>
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                        <button onclick="exportTableToCSV()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 shadow">
+                            <i class="fa-solid fa-file-excel"></i>
+                            <span>Ekspor CSV</span>
+                        </button>
+                        <button onclick="clearObservationTable()" class="px-3.5 py-2 bg-rose-600/80 hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5">
+                            <i class="fa-solid fa-trash-can"></i>
+                            <span>Hapus Semua</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Observation Table Display -->
+                <div class="bg-slate-800/60 rounded-2xl border border-slate-700 overflow-hidden shadow-lg">
+                    <div class="overflow-x-auto">
+                        <table id="obs-table" class="w-full text-left text-xs text-slate-200 border-collapse">
+                            <thead>
+                                <tr class="bg-slate-900/90 text-slate-400 border-b border-slate-700 uppercase font-semibold">
+                                    <th class="p-3">No</th>
+                                    <th class="p-3">Bahan</th>
+                                    <th class="p-3">Kalor Jenis $c$</th>
+                                    <th class="p-3">Massa $m$ (kg)</th>
+                                    <th class="p-3">Waktu $t$ (s)</th>
+                                    <th class="p-3">Suhu Awal $T_0$ (°C)</th>
+                                    <th class="p-3">Suhu Akhir $T_1$ (°C)</th>
+                                    <th class="p-3">$\Delta T$ (°C)</th>
+                                    <th class="p-3">Kalor Diserap $Q$ (J)</th>
+                                    <th class="p-3 text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="obs-table-body" class="divide-y divide-slate-700/60 font-mono">
+                                <!-- Dynamic Rows -->
+                                <tr id="table-empty-row">
+                                    <td colspan="10" class="p-8 text-center text-slate-500 font-sans italic">
+                                        Belum ada data pengamatan. Lakukan simulasi pada tab "Simulasi AR" dan klik "Catat Data".
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ================= SECTION 5: LKPD DIGITAL LENGKAP ================= -->
+        <section id="sec-lkpd" class="hidden p-4 sm:p-8 max-w-4xl mx-auto w-full flex-1 overflow-y-auto">
+            <div class="bg-slate-800/80 p-6 sm:p-8 rounded-3xl border border-slate-700 shadow-2xl space-y-8">
+                
+                <!-- LKPD Header -->
+                <div class="border-b border-slate-700 pb-6 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div>
+                        <span class="px-3 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase bg-brand-500/20 text-brand-300 border border-brand-500/30">
+                            Lembar Kerja Peserta Didik (LKPD)
+                        </span>
+                        <h2 class="text-2xl font-black text-white mt-2">Eksperimen Suhu dan Kalor</h2>
+                        <p class="text-xs text-slate-400">Materi: Kalor, Kapasitas Kalor, dan Perubahan Suhu Zat</p>
+                    </div>
+                    <button onclick="window.print()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-bold transition flex items-center space-x-2">
+                        <i class="fa-solid fa-print"></i>
+                        <span>Cetak / Simpan PDF</span>
+                    </button>
+                </div>
+
+                <!-- Identitas Siswa -->
+                <div class="bg-slate-900/80 p-4 rounded-2xl border border-slate-700/80 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                    <div>
+                        <label class="block text-slate-400 mb-1">Nama Siswa / Kelompok:</label>
+                        <input type="text" id="lkpd-nama" placeholder="Isi Nama Anda..." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-brand-500">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">Kelas / Semester:</label>
+                        <input type="text" id="lkpd-kelas" placeholder="XI MIPA 1 / Ganjil" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-brand-500">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">Tanggal Praktikum:</label>
+                        <input type="date" id="lkpd-tanggal" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-brand-500">
+                    </div>
+                </div>
+
+                <!-- Pertanyaan 1: Hipotesis -->
+                <div class="space-y-3">
+                    <h3 class="font-bold text-white text-base flex items-center text-amber-400">
+                        <span class="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 text-xs flex items-center justify-center mr-2">A</span>
+                        Rumusan Hipotesis Awal
+                    </h3>
+                    <p class="text-xs text-slate-300">
+                        Berdasarkan pengetahuan awal Anda, jika dua benda bermassa sama (misalnya Aluminium dan Air) dipanaskan dengan daya api yang persis sama selama 30 detik, manakah yang akan mengalami kenaikan suhu lebih cepat? Jelaskan alasanmu!
+                    </p>
+                    <textarea id="lkpd-ans-1" rows="3" placeholder="Tuliskan hipotesis jawaban Anda di sini..." class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-brand-500"></textarea>
+                </div>
+
+                <!-- Pertanyaan 2: Tugas Eksperimen Virtual -->
+                <div class="space-y-3">
+                    <h3 class="font-bold text-white text-base flex items-center text-brand-400">
+                        <span class="w-6 h-6 rounded-full bg-brand-500/20 text-brand-400 text-xs flex items-center justify-center mr-2">B</span>
+                        Tugas Langkah Eksperimen Virtual
+                    </h3>
+                    <div class="bg-slate-900/60 p-4 rounded-2xl border border-slate-700 text-xs space-y-2 text-slate-300">
+                        <p>1. Atur daya pemanas pada <strong>1000 Watt</strong>.</p>
+                        <p>2. Lakukan simulasi pemanasan selama <strong>20 detik</strong> untuk <strong>Air ($m = 0.5\text{ kg}$)</strong> dan <strong>Tembaga ($m = 0.5\text{ kg}$)</strong>.</p>
+                        <p>3. Catat hasil pengamatan ke tabel pengamatan simulasi.</p>
+                    </div>
+                </div>
+
+                <!-- Pertanyaan 3: Analisis Data -->
+                <div class="space-y-3">
+                    <h3 class="font-bold text-white text-base flex items-center text-indigo-400">
+                        <span class="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 text-xs flex items-center justify-center mr-2">C</span>
+                        Pertanyaan Analisis Data
+                    </h3>
+                    
+                    <div class="space-y-4 text-xs">
+                        <div>
+                            <label class="block font-semibold text-slate-200 mb-1">
+                                1. Mengapa bahan dengan kalor jenis ($c$) yang lebih kecil mengalami kenaikan suhu ($\Delta T$) lebih besar untuk jumlah kalor $Q$ yang sama? Tunjukkan pembuktian matematisnya dari rumus $Q = m \cdot c \cdot \Delta T$!
+                            </label>
+                            <textarea id="lkpd-ans-2" rows="3" placeholder="Tuliskan analisis Anda..." class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-brand-500"></textarea>
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-200 mb-1">
+                                2. Bagaimana pengaruh penambahan massa ($m$) terhadap durasi waktu yang dibutuhkan untuk mencapai suhu akhir tertentu?
+                            </label>
+                            <textarea id="lkpd-ans-3" rows="3" placeholder="Tuliskan analisis Anda..." class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-brand-500"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pertanyaan 4: Kesimpulan -->
+                <div class="space-y-3">
+                    <h3 class="font-bold text-white text-base flex items-center text-emerald-400">
+                        <span class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs flex items-center justify-center mr-2">D</span>
+                        Kesimpulan Praktikum
+                    </h3>
+                    <textarea id="lkpd-ans-4" rows="3" placeholder="Tuliskan kesimpulan akhir pembelajaran Anda..." class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-brand-500"></textarea>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        /* ===================================================================
+           PHYSICS & MATERIAL CONSTANTS
+           =================================================================== */
+        const MATERIALS = {
+            water: { name: 'Air', c: 4184, color: 0x3b82f6, opacity: 0.75, transparent: true, density: 1000, isLiquid: true },
+            aluminum: { name: 'Aluminium', c: 900, color: 0xd1d5db, opacity: 1.0, transparent: false, density: 2700, isLiquid: false },
+            copper: { name: 'Tembaga', c: 385, color: 0xb91c1c, opacity: 1.0, transparent: false, density: 8960, isLiquid: false },
+            iron: { name: 'Besi', c: 450, color: 0x475569, opacity: 1.0, transparent: false, density: 7870, isLiquid: false },
+            gold: { name: 'Emas', c: 129, color: 0xeab308, opacity: 1.0, transparent: false, density: 19300, isLiquid: false },
+            lead: { name: 'Timbal', c: 128, color: 0x64748b, opacity: 1.0, transparent: false, density: 11340, isLiquid: false }
+        };
+
+        // Simulation State
+        let simState = {
+            materialKey: 'water',
+            mass: 0.5,           // kg
+            power: 500,          // Watts (J/s)
+            temp: 25.0,          // Current Temp in °C
+            initialTemp: 25.0,   // Initial Temp in °C
+            ambientTemp: 25.0,   // Ambient Temp
+            heatJoules: 0,       // Total Heat Absorbed Q in Joules
+            timeElapsed: 0,      // Seconds
+            isRunning: false,
+            isARCamActive: false,
+            recordedLogs: []
+        };
+
+        /* ===================================================================
+           THREE.JS SCENE SETUP
+           =================================================================== */
+        let scene, camera, renderer, controls;
+        let labGroup, testObjectMesh, waterLiquidMesh, thermometerMercuryMesh, flameParticles, heatWaveMesh;
+        let clock = new THREE.Clock();
+        let animationFrameId;
+
+        function initThreeJS() {
+            const container = document.getElementById('ar-canvas-container');
+            const canvas = document.getElementById('three-canvas');
+
+            // Scene
+            scene = new THREE.Scene();
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+            camera.position.set(0, 1.8, 3.2);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            // OrbitControls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 + 0.1;
+            controls.minDistance = 1;
+            controls.maxDistance = 10;
+            controls.target.set(0, 0.6, 0);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+            dirLight.position.set(3, 5, 2);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            scene.add(dirLight);
+
+            const pointLight = new THREE.PointLight(0xffaa44, 0.5, 3);
+            pointLight.position.set(0, 0.4, 0);
+            scene.add(pointLight);
+
+            // Build 3D Lab Setup
+            build3DLabEnvironment();
+
+            // Window Resize Listener
+            window.addEventListener('resize', onWindowResize);
+
+            // Start Render Loop
+            animate();
+        }
+
+        function build3DLabEnvironment() {
+            labGroup = new THREE.Group();
+            scene.add(labGroup);
+
+            // 1. Lab Table Base (Hidden in AR mode)
+            const tableGeo = new THREE.CylinderGeometry(1.5, 1.5, 0.08, 32);
+            const tableMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
+            const tableMesh = new THREE.Mesh(tableGeo, tableMat);
+            tableMesh.position.y = -0.04;
+            tableMesh.receiveShadow = true;
+            tableMesh.name = "labTable";
+            labGroup.add(tableMesh);
+
+            // Grid Helper for AR surface feeling
+            const gridHelper = new THREE.GridHelper(3, 20, 0x3b82f6, 0x334155);
+            gridHelper.position.y = 0.001;
+            gridHelper.name = "labGrid";
+            labGroup.add(gridHelper);
+
+            // 2. Bunsen Burner Base & Pipe
+            const burnerGroup = new THREE.Group();
+            
+            const burnerBaseGeo = new THREE.CylinderGeometry(0.25, 0.3, 0.05, 24);
+            const metalMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8, roughness: 0.2 });
+            const burnerBase = new THREE.Mesh(burnerBaseGeo, metalMat);
+            burnerBase.position.y = 0.025;
+            burnerGroup.add(burnerBase);
+
+            const pipeGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.35, 16);
+            const pipeMesh = new THREE.Mesh(pipeGeo, metalMat);
+            pipeMesh.position.y = 0.2;
+            burnerGroup.add(pipeMesh);
+
+            labGroup.add(burnerGroup);
+
+            // 3. Flame Particle System (Bunsen Flame)
+            createFlameParticles();
+
+            // 4. Tripod Stand & Wire Gauze (Kaki Tiga & Kasa Kawat)
+            const tripodGroup = new THREE.Group();
+            const ringGeo = new THREE.TorusGeometry(0.32, 0.02, 12, 32);
+            const ringMesh = new THREE.Mesh(ringGeo, metalMat);
+            ringMesh.rotation.x = Math.PI / 2;
+            ringMesh.position.y = 0.65;
+            tripodGroup.add(ringMesh);
+
+            // 3 Legs
+            for (let i = 0; i < 3; i++) {
+                const angle = (i * Math.PI * 2) / 3;
+                const legGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.67, 12);
+                const legMesh = new THREE.Mesh(legGeo, metalMat);
+                legMesh.position.set(Math.cos(angle) * 0.28, 0.33, Math.sin(angle) * 0.28);
+                legMesh.rotation.z = Math.cos(angle) * -0.15;
+                legMesh.rotation.x = Math.sin(angle) * 0.15;
+                tripodGroup.add(legMesh);
+            }
+
+            // Wire Gauze mesh screen
+            const gauzeGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.01, 24);
+            const gauzeMat = new THREE.MeshStandardMaterial({ color: 0x475569, wireframe: true });
+            const gauzeMesh = new THREE.Mesh(gauzeGeo, gauzeMat);
+            gauzeMesh.position.y = 0.66;
+            tripodGroup.add(gauzeMesh);
+
+            labGroup.add(tripodGroup);
+
+            // 5. Container / Beaker or Metal Block Mesh Setup
+            const containerGroup = new THREE.Group();
+            containerGroup.position.y = 0.67;
+
+            // Glass Beaker Cylinder
+            const beakerGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.6, 32, 1, true);
+            const glassMat = new THREE.MeshPhysicalMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.35,
+                roughness: 0.1,
+                transmission: 0.9,
+                thickness: 0.05
+            });
+            const beakerMesh = new THREE.Mesh(beakerGeo, glassMat);
+            beakerMesh.position.y = 0.3;
+            containerGroup.add(beakerMesh);
+
+            // Liquid Volume inside Beaker (Used for Water)
+            const liquidGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.45, 32);
+            const liquidMat = new THREE.MeshStandardMaterial({
+                color: MATERIALS.water.color,
+                transparent: true,
+                opacity: 0.8,
+                roughness: 0.2
+            });
+            waterLiquidMesh = new THREE.Mesh(liquidGeo, liquidMat);
+            waterLiquidMesh.position.y = 0.23;
+            containerGroup.add(waterLiquidMesh);
+
+            // Solid Metal Block Mesh (Used for Metals)
+            const blockGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+            const blockMat = new THREE.MeshStandardMaterial({
+                color: MATERIALS.aluminum.color,
+                metalness: 0.6,
+                roughness: 0.3
+            });
+            testObjectMesh = new THREE.Mesh(blockGeo, blockMat);
+            testObjectMesh.position.y = 0.22;
+            testObjectMesh.castShadow = true;
+            testObjectMesh.visible = false; // Initial visible = liquid water
+            containerGroup.add(testObjectMesh);
+
+            // 6. Thermometer Assembly
+            const thermoGroup = new THREE.Group();
+            thermoGroup.position.set(0.12, 0.1, 0);
+
+            // Outer Glass Tube
+            const thermoGlassGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.85, 16);
+            const thermoGlassMesh = new THREE.Mesh(thermoGlassGeo, glassMat);
+            thermoGlassMesh.position.y = 0.425;
+            thermoGroup.add(thermoGlassMesh);
+
+            // Mercury Bulb & Column
+            const bulbGeo = new THREE.SphereGeometry(0.035, 16, 16);
+            const mercuryMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.2 });
+            const bulbMesh = new THREE.Mesh(bulbGeo, mercuryMat);
+            bulbMesh.position.y = 0.04;
+            thermoGroup.add(bulbMesh);
+
+            const mercuryColGeo = new THREE.CylinderGeometry(0.008, 0.008, 1, 12);
+            mercuryColGeo.translate(0, 0.5, 0); // Origin at base for scaling
+            thermometerMercuryMesh = new THREE.Mesh(mercuryColGeo, mercuryMat);
+            thermometerMercuryMesh.position.y = 0.05;
+            thermometerMercuryMesh.scale.set(1, 0.25, 1); // 25% scale = 25°C
+            thermoGroup.add(thermometerMercuryMesh);
+
+            containerGroup.add(thermoGroup);
+            labGroup.add(containerGroup);
+
+            // Heat Glow Ring
+            const heatGlowGeo = new THREE.RingGeometry(0.05, 0.28, 32);
+            const heatGlowMat = new THREE.MeshBasicMaterial({ color: 0xff3300, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+            heatWaveMesh = new THREE.Mesh(heatGlowGeo, heatGlowMat);
+            heatWaveMesh.rotation.x = Math.PI / 2;
+            heatWaveMesh.position.y = 0.665;
+            labGroup.add(heatWaveMesh);
+        }
+
+        function createFlameParticles() {
+            const particleCount = 60;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 0.08;
+                positions[i * 3 + 1] = 0.38 + Math.random() * 0.25;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 0.08;
+
+                colors[i * 3] = 1.0;     // R
+                colors[i * 3 + 1] = 0.4; // G
+                colors[i * 3 + 2] = 0.0; // B
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const pMaterial = new THREE.PointsMaterial({
+                size: 0.04,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.85,
+                blending: THREE.AdditiveBlending
+            });
+
+            flameParticles = new THREE.Points(geometry, pMaterial);
+            flameParticles.visible = false;
+            labGroup.add(flameParticles);
+        }
+
+        function animate() {
+            animationFrameId = requestAnimationFrame(animate);
+
+            const dt = clock.getDelta();
+
+            // Update Physics Simulation
+            if (simState.isRunning && simState.power > 0) {
+                simState.timeElapsed += dt;
+
+                // Heat equation: Q = P * dt
+                // Delta Temp: dT = dQ / (m * c)
+                const currentMat = MATERIALS[simState.materialKey];
+                const dQ = simState.power * dt; // Joules
+                const dT = dQ / (simState.mass * currentMat.c);
+
+                simState.heatJoules += dQ;
+                simState.temp += dT;
+
+                // Cap max boiling temp or safety limit
+                if (simState.materialKey === 'water' && simState.temp >= 100.0) {
+                    simState.temp = 100.0; // Water boiling point cap
+                } else if (simState.temp >= 1200.0) {
+                    simState.temp = 1200.0;
+                }
+
+                updateHUDDisplays();
+            }
+
+            // Animate Flame Particles
+            if (flameParticles && flameParticles.visible) {
+                const positions = flameParticles.geometry.attributes.position.array;
+                for (let i = 0; i < positions.length / 3; i++) {
+                    positions[i * 3 + 1] += dt * 0.4;
+                    if (positions[i * 3 + 1] > 0.63) {
+                        positions[i * 3 + 1] = 0.38;
+                        positions[i * 3] = (Math.random() - 0.5) * 0.08;
+                        positions[i * 3 + 2] = (Math.random() - 0.5) * 0.08;
+                    }
+                }
+                flameParticles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            // Animate Heat Wave Glow intensity
+            if (heatWaveMesh) {
+                const targetOpacity = simState.isRunning && simState.power > 0 ? 0.3 + Math.sin(Date.now() * 0.008) * 0.2 : 0;
+                heatWaveMesh.material.opacity = THREE.MathUtils.lerp(heatWaveMesh.material.opacity, targetOpacity, 0.1);
+            }
+
+            // Update Thermometer Height Scale dynamically based on temp (0°C to 100°C mapped to scale 0 to 0.75)
+            if (thermometerMercuryMesh) {
+                const targetScaleY = Math.min(Math.max((simState.temp / 100) * 0.7, 0.05), 0.8);
+                thermometerMercuryMesh.scale.y = THREE.MathUtils.lerp(thermometerMercuryMesh.scale.y, targetScaleY, 0.1);
+            }
+
+            // Animate 3D Object Thermal Color Shift on high temp
+            if (testObjectMesh && testObjectMesh.visible) {
+                const heatRatio = Math.min(simState.temp / 300, 1.0);
+                const baseColor = new THREE.Color(MATERIALS[simState.materialKey].color);
+                const hotColor = new THREE.Color(0xff4500);
+                testObjectMesh.material.color.copy(baseColor).lerp(hotColor, heatRatio * 0.6);
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('ar-canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        /* ===================================================================
+           UI CONTROLS & EVENT HANDLERS
+           =================================================================== */
+        
+        function updateMaterialSelection() {
+            const select = document.getElementById('select-material');
+            simState.materialKey = select.value;
+            const mat = MATERIALS[simState.materialKey];
+
+            document.getElementById('material-c-val').innerText = `c = ${mat.c} J/kg°C`;
+
+            // Toggle 3D mesh type between Liquid Water and Solid Metal Block
+            if (mat.isLiquid) {
+                waterLiquidMesh.visible = true;
+                testObjectMesh.visible = false;
+                waterLiquidMesh.material.color.setHex(mat.color);
+            } else {
+                waterLiquidMesh.visible = false;
+                testObjectMesh.visible = true;
+                testObjectMesh.material.color.setHex(mat.color);
+            }
+
+            // Adjust size according to mass & density
+            updateMeshDimensions();
+            resetSimulation();
+        }
+
+        function updateMassValue(val) {
+            simState.mass = parseFloat(val);
+            document.getElementById('mass-display').innerText = `${simState.mass.toFixed(2)} kg`;
+            updateMeshDimensions();
+            resetSimulation();
+        }
+
+        function updatePowerValue(val) {
+            simState.power = parseFloat(val);
+            document.getElementById('power-display').innerText = `${simState.power} Watt`;
+
+            if (flameParticles) {
+                flameParticles.visible = simState.power > 0 && simState.isRunning;
+            }
+        }
+
+        function updateMeshDimensions() {
+            // Scale mesh proportionally to cubic root of mass
+            const scale = Math.pow(simState.mass, 1 / 3) * 0.9;
+            if (testObjectMesh) {
+                testObjectMesh.scale.set(scale, scale, scale);
+            }
+        }
+
+        function toggleSimulation() {
+            simState.isRunning = !simState.isRunning;
+
+            const btnText = document.getElementById('btn-start-text');
+            const btnIcon = document.getElementById('btn-start-icon');
+            const btnSim = document.getElementById('btn-start-sim');
+
+            if (simState.isRunning) {
+                btnText.innerText = "Hentikan Pemanasan";
+                btnIcon.className = "fa-solid fa-pause";
+                btnSim.className = "w-full py-2 px-4 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-lg shadow-rose-600/30 transition transform active:scale-95";
+                
+                if (flameParticles && simState.power > 0) flameParticles.visible = true;
+            } else {
+                btnText.innerText = "Mulai Pemanasan";
+                btnIcon.className = "fa-solid fa-play";
+                btnSim.className = "w-full py-2 px-4 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/30 transition transform active:scale-95";
+                
+                if (flameParticles) flameParticles.visible = false;
+            }
+        }
+
+        function resetSimulation() {
+            simState.isRunning = false;
+            simState.temp = simState.initialTemp;
+            simState.heatJoules = 0;
+            simState.timeElapsed = 0;
+
+            if (flameParticles) flameParticles.visible = false;
+
+            const btnText = document.getElementById('btn-start-text');
+            const btnIcon = document.getElementById('btn-start-icon');
+            const btnSim = document.getElementById('btn-start-sim');
+
+            btnText.innerText = "Mulai Pemanasan";
+            btnIcon.className = "fa-solid fa-play";
+            btnSim.className = "w-full py-2 px-4 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-600/30 transition transform active:scale-95";
+
+            updateHUDDisplays();
+        }
+
+        function updateHUDDisplays() {
+            document.getElementById('hud-temp').innerText = simState.temp.toFixed(1);
+            document.getElementById('hud-temp-k').innerText = `(${(simState.temp + 273.15).toFixed(2)} K)`;
+            
+            // Heat Energy Q formatted
+            const energykJ = simState.heatJoules / 1000;
+            document.getElementById('hud-energy').innerText = `${energykJ.toFixed(2)} kJ`;
+
+            // Timer
+            const mins = Math.floor(simState.timeElapsed / 60);
+            const secs = (simState.timeElapsed % 60).toFixed(1);
+            document.getElementById('hud-timer').innerText = `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs} s`;
+
+            // Temp Gauge bar width
+            const barPercent = Math.min(Math.max((simState.temp / 100) * 100, 0), 100);
+            document.getElementById('temp-gauge-bar').style.width = `${barPercent}%`;
+
+            // Status label
+            const statusElem = document.getElementById('hud-status');
+            if (simState.isRunning) {
+                statusElem.innerText = "Pemanasan Active";
+                statusElem.className = "px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse";
+            } else {
+                statusElem.innerText = "Stabil";
+                statusElem.className = "px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+            }
+
+            // Update atomic canvas speed if modal is open
+            if (atomicAnimActive) {
+                drawAtomicParticles();
+            }
+        }
+
+        async function toggleWebCamAR() {
+            const videoElem = document.getElementById('webcam-feed');
+            const camText = document.getElementById('ar-cam-text');
+            const camIcon = document.getElementById('ar-cam-icon');
+            const tableMesh = scene.getObjectByName("labTable");
+
+            if (!simState.isARCamActive) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: { ideal: "environment" } },
+                        audio: false
+                    });
+                    videoElem.srcObject = stream;
+                    videoElem.style.display = "block";
+                    simState.isARCamActive = true;
+
+                    camText.innerText = "Matikan Kamera AR";
+                    camIcon.className = "fa-solid fa-camera-rotate text-rose-400";
+
+                    // Hide virtual table for seamless real-world plane placement
+                    if (tableMesh) tableMesh.visible = false;
+                } catch (err) {
+                    alert("Gagal mengakses kamera perangkat: " + err.message + "\nFitur Virtual Studio 3D tetap dapat digunakan.");
+                }
+            } else {
+                if (videoElem.srcObject) {
+                    videoElem.srcObject.getTracks().forEach(track => track.stop());
+                }
+                videoElem.style.display = "none";
+                simState.isARCamActive = false;
+
+                camText.innerText = "Aktifkan Kamera AR";
+                camIcon.className = "fa-solid fa-camera text-slate-400";
+
+                if (tableMesh) tableMesh.visible = true;
+            }
+        }
+
+        function resetCameraView() {
+            camera.position.set(0, 1.8, 3.2);
+            controls.target.set(0, 0.6, 0);
+            controls.update();
+        }
+
+        function logDataPoint() {
+            const mat = MATERIALS[simState.materialKey];
+            const deltaT = simState.temp - simState.initialTemp;
+
+            const logEntry = {
+                id: simState.recordedLogs.length + 1,
+                material: mat.name,
+                c: mat.c,
+                mass: simState.mass,
+                time: simState.timeElapsed.toFixed(1),
+                t0: simState.initialTemp.toFixed(1),
+                t1: simState.temp.toFixed(1),
+                deltaT: deltaT.toFixed(1),
+                qJoules: Math.round(simState.heatJoules)
+            };
+
+            simState.recordedLogs.push(logEntry);
+            renderObservationTable();
+        }
+
+        function renderObservationTable() {
+            const tbody = document.getElementById('obs-table-body');
+            tbody.innerHTML = '';
+
+            if (simState.recordedLogs.length === 0) {
+                tbody.innerHTML = `
+                    <tr id="table-empty-row">
+                        <td colspan="10" class="p-8 text-center text-slate-500 font-sans italic">
+                            Belum ada data pengamatan. Lakukan simulasi pada tab "Simulasi AR" dan klik "Catat Data".
+                        </td>
+                    </tr>`;
+                return;
+            }
+
+            simState.recordedLogs.forEach((log, index) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-700/40 transition";
+                tr.innerHTML = `
+                    <td class="p-3 font-bold text-slate-400">${index + 1}</td>
+                    <td class="p-3 font-sans font-semibold text-brand-300">${log.material}</td>
+                    <td class="p-3 text-slate-300">${log.c}</td>
+                    <td class="p-3 text-indigo-300">${log.mass}</td>
+                    <td class="p-3 text-slate-300">${log.time} s</td>
+                    <td class="p-3 text-slate-300">${log.t0} °C</td>
+                    <td class="p-3 text-amber-300 font-bold">${log.t1} °C</td>
+                    <td class="p-3 text-rose-400 font-bold">+${log.deltaT} °C</td>
+                    <td class="p-3 text-emerald-400 font-extrabold">${log.qJoules.toLocaleString('id-ID')} J</td>
+                    <td class="p-3 text-center">
+                        <button onclick="deleteLogRow(${index})" class="text-rose-400 hover:text-rose-300 p-1">
+                            <i class="fa-solid fa-trash text-xs"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function deleteLogRow(index) {
+            simState.recordedLogs.splice(index, 1);
+            renderObservationTable();
+        }
+
+        function clearObservationTable() {
+            if (confirm("Apakah Anda yakin ingin menghapus seluruh data tabel pengamatan?")) {
+                simState.recordedLogs = [];
+                renderObservationTable();
+            }
+        }
+
+        function exportTableToCSV() {
+            if (simState.recordedLogs.length === 0) {
+                alert("Tabel pengamatan masih kosong!");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,No,Bahan,Kalor Jenis c (J/kgC),Massa m (kg),Waktu t (s),Suhu Awal T0 (C),Suhu Akhir T1 (C),Delta T (C),Kalor Q (J)\n";
+
+            simState.recordedLogs.forEach((log, i) => {
+                csvContent += `${i + 1},${log.material},${log.c},${log.mass},${log.time},${log.t0},${log.t1},${log.deltaT},${log.qJoules}\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `Data_Pengamatan_WebAR_Kalor_${Date.now()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        let atomicAnimActive = false;
+        let atomicParticlesArr = [];
+
+        function toggleAtomicModal() {
+            const modal = document.getElementById('modal-atomic');
+            atomicAnimActive = !atomicAnimActive;
+
+            if (atomicAnimActive) {
+                modal.classList.remove('hidden');
+                initAtomicCanvas();
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function initAtomicCanvas() {
+            const canvas = document.getElementById('atomic-canvas');
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+
+            atomicParticlesArr = [];
+            const cols = 8;
+            const rows = 5;
+            const spacingX = canvas.width / (cols + 1);
+            const spacingY = canvas.height / (rows + 1);
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    atomicParticlesArr.push({
+                        baseX: (c + 1) * spacingX,
+                        baseY: (r + 1) * spacingY,
+                        x: (c + 1) * spacingX,
+                        y: (r + 1) * spacingY,
+                        vx: 0,
+                        vy: 0
+                    });
+                }
+            }
+            drawAtomicParticles();
+        }
+
+        function drawAtomicParticles() {
+            const canvas = document.getElementById('atomic-canvas');
+            if (!canvas || !atomicAnimActive) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Thermal vibration intensity scales linearly with temperature °C
+            const vibrationSpeed = Math.min(Math.max((simState.temp / 30), 0.5), 15);
+            document.getElementById('atomic-speed-display').innerText = `${vibrationSpeed.toFixed(1)}x Vektor Kinetik`;
+
+            atomicParticlesArr.forEach(p => {
+                p.x = p.baseX + (Math.random() - 0.5) * vibrationSpeed * 2.5;
+                p.y = p.baseY + (Math.random() - 0.5) * vibrationSpeed * 2.5;
+
+                // Draw Springs/Bonds
+                ctx.strokeStyle = "rgba(59, 130, 246, 0.25)";
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(p.baseX, p.baseY);
+                ctx.lineTo(p.x, p.y);
+                ctx.stroke();
+
+                // Draw Atom Sphere
+                const heatHue = Math.min(240, Math.max(0, 240 - (simState.temp * 2)));
+                ctx.fillStyle = `hsl(${heatHue}, 90%, 55%)`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = "rgba(255,255,255,0.6)";
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            });
+        }
+
+        function switchTab(tabId) {
+            const sections = ['ar', 'tujuan', 'petunjuk', 'tabel', 'lkpd'];
+            sections.forEach(sec => {
+                const secElem = document.getElementById(`sec-${sec}`);
+                const tabBtn = document.getElementById(`tab-${sec}`);
+
+                if (sec === tabId) {
+                    secElem.classList.remove('hidden');
+                    tabBtn.className = "px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition-all bg-brand-600 text-white shadow";
+                } else {
+                    secElem.classList.add('hidden');
+                    tabBtn.className = "px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold transition-all text-slate-300 hover:text-white hover:bg-slate-700/50";
+                }
+            });
+
+            // Trigger window resize for 3D canvas recalculation if AR tab active
+            if (tabId === 'ar') {
+                onWindowResize();
+            }
+
+            // Render equations with KaTeX whenever user switches tabs
+            renderMathEquations();
+        }
+
+        function renderMathEquations() {
+            if (window.renderMathInElement) {
+                renderMathInElement(document.body, {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false}
+                    ],
+                    throwOnError: false
+                });
+            }
+        }
+
+        window.onload = function () {
+            initThreeJS();
+            // Set initial date field on LKPD
+            document.getElementById('lkpd-tanggal').valueAsDate = new Date();
+            // Auto-render KaTeX equations on initial load
+            renderMathEquations();
+        };
+    </script>
+</body>
+</html>
